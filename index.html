@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Student Attention Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(120deg, #5d5fef, #6f58e9, #7b47d8);
+            background-attachment: fixed;
+        }
+
+        .container {
+            width: 97%;
+            margin: 10px auto;
+            background: white;
+            border-radius: 20px;
+            padding: 15px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 5px;
+            color: #444;
+            font-weight: bold;
+        }
+
+        h2 {
+            font-weight: bold;
+        }
+
+        .top-divider,
+        .mid-divider {
+            width: 100%;
+            height: 10px;
+            background: linear-gradient(90deg, #5d5fef, #6f58e9, #7b47d8);
+            border-radius: 4px;
+            margin: 12px 0;
+        }
+
+        .layout {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .left-panel {
+            width: 54%;
+        }
+
+        .right-panel {
+            width: 42%;
+            text-align: center;
+        }
+
+        .vertical-divider {
+            width: 8px;
+            background: linear-gradient(180deg, #5d5fef, #6f58e9, #7b47d8);
+            border-radius: 5px;
+            height: 100%;
+            margin: 0 20px;
+        }
+
+        /* Stats cards */
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 18px;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            padding: 14px 10px;
+            width: 180px;
+            text-align: center;
+            border-radius: 18px;
+            font-size: 17px;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        .card span {
+            font-weight: normal;
+            font-size: 22px;
+        }
+
+        /* CRISP, NON-STRETCHED GRAPH FIX */
+        .chart-container {
+            width: 100%;
+            height: 380px;
+            margin-top: 40px;
+        }
+
+        #barChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .student-row {
+            background: #eafff5;
+            margin: 4px 0;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>Student Attention Tracking System</h1>
+
+        <div class="top-divider"></div>
+
+        <div class="layout">
+
+            <!-- LEFT PANEL → STUDENT LIST -->
+            <div class="left-panel">
+                <h2 style="text-align:center;">Individual Student Attention</h2>
+                <div id="studentList"></div>
+            </div>
+
+            <!-- VERTICAL LINE -->
+            <div class="vertical-divider"></div>
+
+            <!-- RIGHT PANEL → STATS + GRAPH -->
+            <div class="right-panel">
+
+                <div class="stats">
+                    <div class="card" style="background:#ffffff;">
+                        Total Students<br>
+                        <span id="total">--</span>
+                    </div>
+
+                    <div class="card" style="background:#c2ffd6;">
+                        Avg Attentive<br>
+                        <span id="avgAtt">--%</span>
+                    </div>
+
+                    <div class="card" style="background:#ffd6d6;">
+                        Avg Inattentive<br>
+                        <span id="avgInatt">--%</span>
+                    </div>
+                </div>
+
+                <div class="mid-divider"></div>
+
+                <h2>Overall Classroom Attentiveness</h2>
+
+                <div class="chart-container">
+                    <canvas id="barChart"></canvas>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        let previousValues = {};
+
+        let ctx = document.getElementById("barChart").getContext("2d");
+
+        let barChart = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: ["Attentive", "Inattentive"],
+                datasets: [{
+                    data: [0, 0],
+                    backgroundColor: ["#4CAF50", "#E74C3C"],
+                    borderRadius: 10
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: "end",
+                        align: "end",
+                        color: "#000",
+                        font: { weight: "bold", size: 14 },
+                        formatter: value => value + "%"
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+
+        function loadData() {
+            fetch("/data")
+                .then(res => res.json())
+                .then(data => {
+
+                    // STATISTICS CARDS
+                    document.getElementById("total").innerText = data.total;
+                    document.getElementById("avgAtt").innerText = data.avg_att + "%";
+                    document.getElementById("avgInatt").innerText = data.avg_inatt + "%";
+
+                    // UPDATE GRAPH
+                    barChart.data.datasets[0].data = [data.avg_att, data.avg_inatt];
+                    barChart.update();
+
+                    // SORT STUDENTS
+                    data.students.sort((a, b) => b.attention - a.attention);
+
+                    let html = "";
+
+                    data.students.forEach((s, i) => {
+
+                        let oldValue = previousValues[s.name];
+                        let newValue = s.attention;
+
+                        let color = "black";
+                        if (oldValue !== undefined) {
+                            if (newValue > oldValue) color = "#28a745";
+                            else if (newValue < oldValue) color = "#e63946";
+                        }
+
+                        html += `
+                            <div class="student-row">
+                                <span>${i + 1}. ${s.name}</span>
+                                <span style="font-weight:bold;color:${color};">${newValue}%</span>
+                            </div>
+                        `;
+
+                        previousValues[s.name] = newValue;
+                    });
+
+                    document.getElementById("studentList").innerHTML = html;
+                });
+        }
+
+        loadData();
+        setInterval(loadData, 60000);
+    </script>
+
+</body>
+
+</html>
